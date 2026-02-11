@@ -18,7 +18,7 @@ def openai_headers():
 
 def openai_generate_image_base64(prompt: str, size: str = "1024x1024") -> bytes:
     # Generates an image via OpenAI Images API and returns raw PNG bytes
-    url = "https://api.openai.com/v1/images"
+    url = "https://api.openai.com/v1/images/generations"
     payload = {
         "model": "gpt-image-1",
         "prompt": prompt,
