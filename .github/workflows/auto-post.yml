@@ -2,13 +2,12 @@ name: Auto Instagram Post
 
 on:
   schedule:
-    - cron: "0 9 * * *"   # svaki dan u 09:00 UTC
-  workflow_dispatch:       # omogućuje ručno pokretanje
+    - cron: "0 9 * * *"
+  workflow_dispatch:
 
 jobs:
   post:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
