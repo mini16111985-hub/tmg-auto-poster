@@ -1,0 +1,28 @@
+name: Auto Instagram Post
+
+on:
+  schedule:
+    - cron: "0 9 * * *"   # svaki dan u 09:00 UTC
+  workflow_dispatch:       # omogućuje ručno pokretanje
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run auto poster
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: python auto_post.py
