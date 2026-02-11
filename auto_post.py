@@ -17,18 +17,15 @@ def openai_headers():
     }
 
 def openai_generate_image_base64(prompt: str, size: str = "1024x1024") -> bytes:
-    # OpenAI Images API (gpt-image-1) -> vraća PNG bytes (base64 decoded)
+    # GPT image models use /v1/images/generations and return b64_json by default
     url = "https://api.openai.com/v1/images/generations"
     payload = {
         "model": "gpt-image-1",
         "prompt": prompt,
         "size": size,
-        "response_format": "b64_json",
     }
 
-    r = requests.post(url, headers=openai_headers(), json=payload, timeout=120)
-
-    # Ako padne, ispiši točan razlog (ovo nam je ključno za debug)
+    r = requests.post(url, headers=openai_headers(), json=payload, timeout=180)
     if r.status_code >= 400:
         raise RuntimeError(f"OpenAI Images API error {r.status_code}: {r.text}")
 
