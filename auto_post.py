@@ -111,6 +111,8 @@ def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: i
             raise TimeoutError("IG container not ready in time")
         time.sleep(5)
 
+
+
 # --- Content selection (random daily) ---
 
 def pick_prompt(items: list[dict]) -> dict:
@@ -160,6 +162,15 @@ def main():
     media_id = ig_publish(ig_user_id, access_token, creation_id)
 
     print("✅ Published IG media id:", media_id)
+    
+    # 5) Publish to Facebook Page
+fb_page_id = os.environ["FB_PAGE_ID"].strip()
+fb_page_token = os.environ["FB_PAGE_ACCESS_TOKEN"].strip()
+
+fb_post_id = fb_publish_photo(fb_page_id, fb_page_token, image_url, caption)
+print("✅ Published FB post id:", fb_post_id)
+
+
 
 if __name__ == "__main__":
     main()
