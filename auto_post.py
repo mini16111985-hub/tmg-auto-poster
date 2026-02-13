@@ -112,10 +112,18 @@ def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: i
 # --- Content selection (random daily) ---
 
 def pick_prompt(items: list[dict]) -> dict:
-    # daily seed: YYYY-MM-DD -> deterministic but changes daily
-    seed = dt.datetime.utcnow().strftime("%Y-%m-%d")
-    idx = abs(hash(seed)) % len(items)
-    return items[idx]
+    # Shuffle kroz sve pa ponovi:
+    # napravimo fiksno izmiješan redoslijed i svaki dan uzmemo sljedeći element
+
+    seed = "TMG_SHUFFLE_V1"
+    rnd = random.Random(seed)
+
+    order = list(range(len(items)))
+    rnd.shuffle(order)
+
+    day_index = dt.datetime.utcnow().date().toordinal()
+    pick = order[day_index % len(order)]
+    return items[pick]
 
 def main():
     ig_user_id = os.environ["IG_USER_ID"].strip()
