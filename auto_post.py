@@ -6,7 +6,6 @@ import base64
 import requests
 import random
 
-
 GRAPH = "https://graph.facebook.com/v24.0"
 
 # --- OpenAI helpers (Images + Text) ---
@@ -63,7 +62,7 @@ def upload_to_imgur(image_bytes: bytes) -> str:
     """
     Uploads image to Imgur anonymously and returns a public direct image URL.
     NOTE: This relies on Imgur's anonymous upload endpoint which may rate-limit.
-    If you hit limits, we’ll switch to GitHub Releases or another host.
+    If you hit limits, we’ll switch to another host.
     """
     r = requests.post(
         "https://api.imgur.com/3/image",
@@ -111,14 +110,27 @@ def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: i
             raise TimeoutError("IG container not ready in time")
         time.sleep(5)
 
+# --- FB Page publish helpers ---
 
+def fb_publish_photo(page_id: str, page_access_token: str, image_url: str, caption: str) -> str:
+    """
+    Publishes a photo post to a Facebook Page using a public image URL.
+    Returns post id.
+    """
+    url = f"{GRAPH}/{page_id}/photos"
+    r = requests.post(url, data={
+        "url": image_url,
+        "caption": caption,
+        "published": "true",
+        "access_token": page_access_token,
+    }, timeout=60)
+    r.raise_for_status()
+    return r.json().get("post_id") or r.json().get("id", "")
 
 # --- Content selection (random daily) ---
 
 def pick_prompt(items: list[dict]) -> dict:
-    # Shuffle kroz sve pa ponovi:
-    # napravimo fiksno izmiješan redoslijed i svaki dan uzmemo sljedeći element
-
+    # fiksno izmiješan redoslijed + svaki dan sljedeći element
     seed = "TMG_SHUFFLE_V1"
     rnd = random.Random(seed)
 
@@ -160,17 +172,14 @@ def main():
     creation_id = ig_create_container(ig_user_id, access_token, image_url, caption)
     ig_wait_container_ready(creation_id, access_token)
     media_id = ig_publish(ig_user_id, access_token, creation_id)
-
     print("✅ Published IG media id:", media_id)
-    
+
     # 5) Publish to Facebook Page
-fb_page_id = os.environ["FB_PAGE_ID"].strip()
-fb_page_token = os.environ["FB_PAGE_ACCESS_TOKEN"].strip()
+    fb_page_id = os.environ["FB_PAGE_ID"].strip()
+    fb_page_token = os.environ["FB_PAGE_ACCESS_TOKEN"].strip()
 
-fb_post_id = fb_publish_photo(fb_page_id, fb_page_token, image_url, caption)
-print("✅ Published FB post id:", fb_post_id)
-
-
+    fb_post_id = fb_publish_photo(fb_page_id, fb_page_token, image_url, caption)
+    print("✅ Published FB post id:", fb_post_id)
 
 if __name__ == "__main__":
     main()
