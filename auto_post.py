@@ -21,12 +21,12 @@ def openai_generate_image_base64(prompt: str, size: str = "1024x1024") -> bytes:
     # GPT image models use /v1/images/generations and return b64_json by default
     url = "https://api.openai.com/v1/images/generations"
     payload = {
-        "model": "gpt-4.1-mini",
+        "model": "gpt-image-1",
         "prompt": prompt,
         "size": size,
     }
 
-    r = requests.post(url, headers=openai_headers(), json=payload, timeout=180)
+    r = requests.post(url, headers=openai_headers(), json=payload, timeout=60)
     if r.status_code >= 400:
         raise RuntimeError(f"OpenAI Images API error {r.status_code}: {r.text}")
 
