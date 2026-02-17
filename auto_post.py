@@ -21,7 +21,7 @@ def openai_generate_image_base64(prompt: str, size: str = "1024x1024") -> bytes:
     # GPT image models use /v1/images/generations and return b64_json by default
     url = "https://api.openai.com/v1/images/generations"
     payload = {
-        "model": "gpt-image-1",
+        "model": "gpt-4.1-mini",
         "prompt": prompt,
         "size": size,
     }
