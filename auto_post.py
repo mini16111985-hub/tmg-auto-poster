@@ -6,40 +6,19 @@ import base64
 import requests
 import random
 
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
-
 GRAPH = "https://graph.facebook.com/v24.0"
 
-
-# -----------------------
-# HTTP session + retries
-# -----------------------
+# -----------------------------
+# HTTP session + helpers
+# -----------------------------
 def make_session() -> requests.Session:
     s = requests.Session()
-    retries = Retry(
-        total=5,
-        connect=5,
-        read=5,
-        backoff_factor=1.5,
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET", "POST"],
-        raise_on_status=False,
-    )
-    adapter = HTTPAdapter(max_retries=retries)
-    s.mount("https://", adapter)
-    s.mount("http://", adapter)
+    s.headers.update({"User-Agent": "tmg-auto-poster/1.0"})
     return s
-
 
 SESSION = make_session()
 
-
 def _raise_for_status_with_body(resp: requests.Response, label: str) -> None:
-    """
-    Requests raise_for_status() is often too terse. This prints body for Meta/OpenAI/Imgur.
-    """
     if resp.status_code < 400:
         return
     body = resp.text
@@ -49,10 +28,20 @@ def _raise_for_status_with_body(resp: requests.Response, label: str) -> None:
         pass
     raise RuntimeError(f"{label} HTTP {resp.status_code}: {body}")
 
+def retry(fn, tries=5, base_sleep=2.0, label="call"):
+    last = None
+    for i in range(tries):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            # exponential backoff
+            time.sleep(base_sleep * (2 ** i))
+    raise RuntimeError(f"{label} failed after {tries} tries: {last}")
 
-# -----------------------
+# -----------------------------
 # OpenAI helpers
-# -----------------------
+# -----------------------------
 def openai_headers():
     api_key = os.environ["OPENAI_API_KEY"].strip()
     return {
@@ -60,27 +49,27 @@ def openai_headers():
         "Content-Type": "application/json",
     }
 
-
 def openai_generate_image_base64(prompt: str, size: str = "1024x1024") -> bytes:
     url = "https://api.openai.com/v1/images/generations"
     payload = {"model": "gpt-image-1", "prompt": prompt, "size": size}
 
-    resp = SESSION.post(url, headers=openai_headers(), json=payload, timeout=180)
-    _raise_for_status_with_body(resp, "OpenAI Images API")
+    def _do():
+        r = SESSION.post(url, headers=openai_headers(), json=payload, timeout=180)
+        if r.status_code >= 400:
+            raise RuntimeError(f"OpenAI Images API error {r.status_code}: {r.text}")
+        data = r.json()
+        b64 = data["data"][0]["b64_json"]
+        return base64.b64decode(b64)
 
-    data = resp.json()
-    b64 = data["data"][0]["b64_json"]
-    return base64.b64decode(b64)
-
+    return retry(_do, tries=5, base_sleep=2, label="OpenAI image")
 
 def openai_generate_caption(prompt: str, hashtags: str = "") -> str:
     url = "https://api.openai.com/v1/chat/completions"
     user_msg = (
         "Napiši Instagram opis na hrvatskom (maks 2-3 rečenice), "
         "bez previše emojija (0-2 max). "
-        f"Tema auta: {prompt}\n"
-        "Na kraj dodaj ove hashtagove: "
-        + (hashtags or "#oldtimer #classiccar #timemachinegarage")
+        "Tema auta: " + prompt + "\n"
+        "Na kraj dodaj ove hashtagove: " + (hashtags or "#oldtimer #classiccar #timemachinegarage")
     )
     payload = {
         "model": "gpt-4.1-mini",
@@ -92,134 +81,173 @@ def openai_generate_caption(prompt: str, hashtags: str = "") -> str:
         "max_tokens": 220,
     }
 
-    resp = SESSION.post(url, headers=openai_headers(), json=payload, timeout=90)
-    _raise_for_status_with_body(resp, "OpenAI Chat API")
-    return resp.json()["choices"][0]["message"]["content"].strip()
+    def _do():
+        r = SESSION.post(url, headers=openai_headers(), json=payload, timeout=90)
+        _raise_for_status_with_body(r, "OpenAI caption")
+        return r.json()["choices"][0]["message"]["content"].strip()
 
+    return retry(_do, tries=4, base_sleep=2, label="OpenAI caption")
 
-# -----------------------
+# -----------------------------
 # Image hosting (Imgur)
-# -----------------------
+# -----------------------------
 def upload_to_imgur(image_bytes: bytes) -> str:
+    def _do():
+        r = SESSION.post(
+            "https://api.imgur.com/3/image",
+            headers={"Authorization": "Client-ID 546c25a59c58ad7"},
+            data={"image": base64.b64encode(image_bytes)},
+            timeout=120,
+        )
+        _raise_for_status_with_body(r, "Imgur upload")
+        return r.json()["data"]["link"]
+
+    return retry(_do, tries=5, base_sleep=2, label="Imgur upload")
+
+# -----------------------------
+# Meta token/ID discovery
+#   - derive Page access_token + IG business ID from long-lived USER token
+# -----------------------------
+def get_page_token_and_ig_id(user_token: str, fb_page_id: str) -> tuple[str, str]:
     """
-    Upload image to Imgur anonymously and return public URL.
+    Returns (page_access_token, ig_business_account_id)
     """
-    b64_str = base64.b64encode(image_bytes).decode("utf-8")
+    url = f"{GRAPH}/me/accounts"
 
-    resp = SESSION.post(
-        "https://api.imgur.com/3/image",
-        headers={"Authorization": "Client-ID 546c25a59c58ad7"},
-        data={"image": b64_str, "type": "base64"},
-        timeout=120,
-    )
-    _raise_for_status_with_body(resp, "Imgur upload")
+    def _do():
+        r = SESSION.get(
+            url,
+            params={
+                "fields": "id,name,access_token,instagram_business_account",
+                "access_token": user_token,
+            },
+            timeout=60,
+        )
+        _raise_for_status_with_body(r, "Meta /me/accounts")
+        data = r.json().get("data", [])
+        for p in data:
+            if str(p.get("id")) == str(fb_page_id):
+                page_token = p.get("access_token")
+                ig_obj = p.get("instagram_business_account") or {}
+                ig_id = ig_obj.get("id")
+                if not page_token:
+                    raise RuntimeError("Nema page access_token u /me/accounts odgovoru.")
+                if not ig_id:
+                    raise RuntimeError(
+                        "Nema instagram_business_account na toj Page. "
+                        "Provjeri da je IG business account spojen na Page."
+                    )
+                return page_token, ig_id
 
-    link = resp.json()["data"]["link"]
-    return link
+        raise RuntimeError(
+            f"Ne nalazim FB_PAGE_ID {fb_page_id} u /me/accounts. "
+            "Provjeri da si admin te stranice i da token ima pages_show_list."
+        )
 
+    return retry(_do, tries=4, base_sleep=2, label="Meta page+ig discovery")
 
-# -----------------------
-# Instagram publish helpers
-# -----------------------
+# -----------------------------
+# IG publish helpers
+# -----------------------------
 def ig_create_container(ig_user_id: str, access_token: str, image_url: str, caption: str) -> str:
     url = f"{GRAPH}/{ig_user_id}/media"
-    resp = SESSION.post(
-        url,
-        data={
-            "image_url": image_url,
-            "caption": caption,
-            "access_token": access_token,
-        },
-        timeout=60,
-    )
-    _raise_for_status_with_body(resp, "IG create container (/media)")
-    return resp.json()["id"]
 
+    def _do():
+        r = SESSION.post(
+            url,
+            data={
+                "image_url": image_url,
+                "caption": caption,
+                "access_token": access_token,
+            },
+            timeout=60,
+        )
+        _raise_for_status_with_body(r, "IG create container (/media)")
+        return r.json()["id"]
 
-def ig_get_container_status(creation_id: str, access_token: str) -> dict:
+    return retry(_do, tries=4, base_sleep=3, label="IG create container")
+
+def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: int = 240) -> None:
     url = f"{GRAPH}/{creation_id}"
-    resp = SESSION.get(
-        url,
-        params={"fields": "status_code,status,error_message", "access_token": access_token},
-        timeout=60,
-    )
-    _raise_for_status_with_body(resp, "IG container status")
-    return resp.json()
-
-
-def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: int = 300) -> None:
     start = time.time()
+
     while True:
-        info = ig_get_container_status(creation_id, access_token)
-        status_code = info.get("status_code")
-        status = info.get("status")
-        err = info.get("error_message")
+        r = SESSION.get(url, params={"fields": "status_code,status,error_message", "access_token": access_token}, timeout=60)
+        _raise_for_status_with_body(r, "IG container status")
+        j = r.json()
+        status = j.get("status_code")
 
-        print(f"⏳ IG container status_code={status_code} status={status} err={err}")
-
-        if status_code == "FINISHED":
+        if status == "FINISHED":
             return
-        if status_code in ("ERROR", "EXPIRED"):
-            raise RuntimeError(f"IG container failed: {json.dumps(info, ensure_ascii=False)}")
-        if time.time() - start > max_wait_sec:
-            raise TimeoutError(f"IG container not ready in {max_wait_sec}s: {json.dumps(info, ensure_ascii=False)}")
-        time.sleep(5)
+        if status in ("ERROR", "EXPIRED"):
+            raise RuntimeError(f"IG container status: {status} / {j.get('error_message')}")
 
+        if time.time() - start > max_wait_sec:
+            raise TimeoutError("IG container not ready in time")
+
+        time.sleep(5)
 
 def ig_publish(ig_user_id: str, access_token: str, creation_id: str) -> str:
     url = f"{GRAPH}/{ig_user_id}/media_publish"
-    resp = SESSION.post(
-        url,
-        data={"creation_id": creation_id, "access_token": access_token},
-        timeout=60,
-    )
-    _raise_for_status_with_body(resp, "IG publish (/media_publish)")
-    return resp.json()["id"]
 
+    def _do():
+        r = SESSION.post(
+            url,
+            data={"creation_id": creation_id, "access_token": access_token},
+            timeout=60,
+        )
+        _raise_for_status_with_body(r, "IG publish (/media_publish)")
+        return r.json()["id"]
 
-# -----------------------
-# Facebook Page publish helpers
-# -----------------------
+    return retry(_do, tries=4, base_sleep=3, label="IG publish")
+
+# -----------------------------
+# FB Page publish helpers
+# -----------------------------
 def fb_publish_photo(page_id: str, page_access_token: str, image_url: str, caption: str) -> str:
     url = f"{GRAPH}/{page_id}/photos"
-    resp = SESSION.post(
-        url,
-        data={
-            "url": image_url,
-            "caption": caption,
-            "published": "true",
-            "access_token": page_access_token,
-        },
-        timeout=60,
-    )
-    _raise_for_status_with_body(resp, "FB publish photo (/photos)")
-    return resp.json().get("post_id") or resp.json().get("id", "")
 
+    def _do():
+        r = SESSION.post(
+            url,
+            data={
+                "url": image_url,
+                "caption": caption,
+                "published": "true",
+                "access_token": page_access_token,
+            },
+            timeout=60,
+        )
+        _raise_for_status_with_body(r, "FB publish photo (/photos)")
+        return r.json().get("post_id") or r.json().get("id", "")
 
-# -----------------------
+    return retry(_do, tries=4, base_sleep=3, label="FB publish photo")
+
+# -----------------------------
 # Content selection
-# -----------------------
+# -----------------------------
 def pick_prompt(items: list[dict]) -> dict:
     seed = "TMG_SHUFFLE_V1"
     rnd = random.Random(seed)
     order = list(range(len(items)))
     rnd.shuffle(order)
-
     day_index = dt.datetime.utcnow().date().toordinal()
     pick = order[day_index % len(order)]
     return items[pick]
 
-
 def main():
-    ig_user_id = os.environ["IG_USER_ID"].strip()
-    access_token = os.environ["IG_ACCESS_TOKEN"].strip()
+    user_token = os.environ["META_USER_ACCESS_TOKEN"].strip()
     fb_page_id = os.environ["FB_PAGE_ID"].strip()
-    fb_page_token = os.environ["FB_PAGE_ACCESS_TOKEN"].strip()
 
     with open("prompts.json", "r", encoding="utf-8") as f:
         items = json.load(f)
     if not items:
         raise RuntimeError("prompts.json je prazan")
+
+    # Discover Page token + IG business ID from the USER token
+    page_token, ig_user_id = get_page_token_and_ig_id(user_token, fb_page_id)
+    print("✅ Resolved IG_USER_ID:", ig_user_id)
+    print("✅ Resolved FB_PAGE_ID:", fb_page_id)
 
     item = pick_prompt(items)
     prompt = item["prompt"]
@@ -230,7 +258,7 @@ def main():
     # 1) Generate image
     img_bytes = openai_generate_image_base64(prompt)
 
-    # 2) Host image publicly
+    # 2) Host image
     image_url = upload_to_imgur(img_bytes)
     print("🖼️ Image URL:", image_url)
 
@@ -238,19 +266,15 @@ def main():
     caption = openai_generate_caption(prompt, hashtags)
     print("📝 Caption:", caption)
 
-    # 4) IG
-    creation_id = ig_create_container(ig_user_id, access_token, image_url, caption)
-    print("📦 IG creation_id:", creation_id)
-
-    ig_wait_container_ready(creation_id, access_token)
-
-    media_id = ig_publish(ig_user_id, access_token, creation_id)
+    # 4) Publish to IG
+    creation_id = ig_create_container(ig_user_id, user_token, image_url, caption)
+    ig_wait_container_ready(creation_id, user_token)
+    media_id = ig_publish(ig_user_id, user_token, creation_id)
     print("✅ Published IG media id:", media_id)
 
-    # 5) FB
-    fb_post_id = fb_publish_photo(fb_page_id, fb_page_token, image_url, caption)
+    # 5) Publish to FB Page
+    fb_post_id = fb_publish_photo(fb_page_id, page_token, image_url, caption)
     print("✅ Published FB post id:", fb_post_id)
-
 
 if __name__ == "__main__":
     main()
