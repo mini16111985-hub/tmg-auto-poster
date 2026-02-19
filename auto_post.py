@@ -110,34 +110,39 @@ def upload_to_imgur(image_bytes: bytes) -> str:
 # -----------------------------
 def get_page_token_and_ig_id(user_token: str, fb_page_id: str) -> tuple[str, str]:
     """
-    Returns (page_access_token, ig_business_account_id)
+    1) /me/accounts (USER token) -> nađi baš taj PAGE i uzmi page access_token
+    2) /{page-id}?fields=instagram_business_account (PAGE token) -> dobij IG business id
     """
+    # 1) Get page token from /me/accounts (THIS is where "accounts" exists)
     url = f"{GRAPH}/me/accounts"
+    r = SESSION.get(url, params={
+        "fields": "id,name,access_token",
+        "access_token": user_token
+    }, timeout=60)
+    _raise_for_status_with_body(r, "Meta /me/accounts")
 
-    def _do():
-        r = SESSION.get(
-            url,
-            params={
-                "fields": "id,name,access_token,instagram_business_account",
-                "access_token": user_token,
-            },
-            timeout=60,
-        )
-        _raise_for_status_with_body(r, "Meta /me/accounts")
-        data = r.json().get("data", [])
-        for p in data:
-            if str(p.get("id")) == str(fb_page_id):
-                page_token = p.get("access_token")
-                ig_obj = p.get("instagram_business_account") or {}
-                ig_id = ig_obj.get("id")
-                if not page_token:
-                    raise RuntimeError("Nema page access_token u /me/accounts odgovoru.")
-                if not ig_id:
-                    raise RuntimeError(
-                        "Nema instagram_business_account na toj Page. "
-                        "Provjeri da je IG business account spojen na Page."
-                    )
-                return page_token, ig_id
+    data = r.json().get("data", [])
+    page = next((p for p in data if str(p.get("id")) == str(fb_page_id)), None)
+    if not page:
+        ids = [p.get("id") for p in data]
+        raise RuntimeError(f"Ne nalazim FB Page ID {fb_page_id} u /me/accounts. Dostupni page IDs: {ids}")
+
+    page_token = page["access_token"]
+
+    # 2) Get instagram_business_account from the Page node (THIS is valid on Page)
+    url2 = f"{GRAPH}/{fb_page_id}"
+    r2 = SESSION.get(url2, params={
+        "fields": "instagram_business_account",
+        "access_token": page_token
+    }, timeout=60)
+    _raise_for_status_with_body(r2, "Meta Page instagram_business_account")
+
+    ig_obj = r2.json().get("instagram_business_account")
+    if not ig_obj or not ig_obj.get("id"):
+        raise RuntimeError(f"Page {fb_page_id} nema instagram_business_account. Provjeri da je IG Business povezan na tu stranicu.")
+
+    ig_user_id = ig_obj["id"]
+    return page_token, ig_user_id
 
         raise RuntimeError(
             f"Ne nalazim FB_PAGE_ID {fb_page_id} u /me/accounts. "
