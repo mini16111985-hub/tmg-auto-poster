@@ -144,12 +144,7 @@ def get_page_token_and_ig_id(user_token: str, fb_page_id: str) -> tuple[str, str
     ig_user_id = ig_obj["id"]
     return page_token, ig_user_id
 
-        raise RuntimeError(
-            f"Ne nalazim FB_PAGE_ID {fb_page_id} u /me/accounts. "
-            "Provjeri da si admin te stranice i da token ima pages_show_list."
-        )
-
-    return retry(_do, tries=4, base_sleep=2, label="Meta page+ig discovery")
+return retry(_do, tries=4, base_sleep=2, label="Meta page+ig discovery")
 
 # -----------------------------
 # IG publish helpers
