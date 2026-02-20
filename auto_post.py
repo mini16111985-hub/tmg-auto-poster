@@ -138,23 +138,26 @@ def ig_create_container(ig_user_id: str, user_token: str, image_url: str, captio
     raise_for_status_with_body(r, "IG create container (/media)")
     return r.json()["id"]
 
-def ig_wait_container_ready(creation_id: str, page_token: str, max_wait_sec: int = 300) -> None:
+def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: int = 300) -> None:
     start = time.time()
     while True:
+        url = f"{GRAPH}/{creation_id}"
         r = SESSION.get(
-            f"{GRAPH}/{creation_id}",
+            url,
             params={"fields": "status_code", "access_token": access_token},
-            timeout=60,
+            timeout=60
         )
         raise_for_status_with_body(r, "IG container status")
-        j = r.json()
-        status = j.get("status_code")
+        status = r.json().get("status_code")
+
         if status == "FINISHED":
             return
         if status in ("ERROR", "EXPIRED"):
-            raise RuntimeError(f"IG container status: {status} / {j}")
+            raise RuntimeError(f"IG container status: {status}")
+
         if time.time() - start > max_wait_sec:
-            raise TimeoutError(f"IG container not ready in {max_wait_sec}s. Last: {j}")
+            raise TimeoutError("IG container not ready in time")
+
         time.sleep(5)
 
 def ig_publish(ig_user_id: str, page_token: str, creation_id: str) -> str:
