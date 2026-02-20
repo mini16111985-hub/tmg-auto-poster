@@ -143,7 +143,7 @@ def ig_wait_container_ready(creation_id: str, user_token: str, max_wait_sec: int
     while True:
         r = SESSION.get(
             f"{GRAPH}/{creation_id}",
-            params={"fields": "status_code,status,error_message", "access_token": user_token},
+            params={"fields": "status_code", "access_token": access_token},
             timeout=60,
         )
         raise_for_status_with_body(r, "IG container status")
