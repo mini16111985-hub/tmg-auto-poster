@@ -138,7 +138,7 @@ def ig_create_container(ig_user_id: str, user_token: str, image_url: str, captio
     raise_for_status_with_body(r, "IG create container (/media)")
     return r.json()["id"]
 
-def ig_wait_container_ready(creation_id: str, user_token: str, max_wait_sec: int = 300) -> None:
+def ig_wait_container_ready(creation_id: str, page_token: str, max_wait_sec: int = 300) -> None:
     start = time.time()
     while True:
         r = SESSION.get(
@@ -157,7 +157,7 @@ def ig_wait_container_ready(creation_id: str, user_token: str, max_wait_sec: int
             raise TimeoutError(f"IG container not ready in {max_wait_sec}s. Last: {j}")
         time.sleep(5)
 
-def ig_publish(ig_user_id: str, user_token: str, creation_id: str) -> str:
+def ig_publish(ig_user_id: str, page_token: str, creation_id: str) -> str:
     r = SESSION.post(
         f"{GRAPH}/{ig_user_id}/media_publish",
         data={"creation_id": creation_id, "access_token": user_token},
@@ -224,8 +224,8 @@ def main():
     print("📝 Caption:", caption)
 
     creation_id = ig_create_container(ig_user_id, user_token, image_url, caption)
-    ig_wait_container_ready(creation_id, user_token)
-    media_id = ig_publish(ig_user_id, user_token, creation_id)
+    ig_wait_container_ready(creation_id, page_token)
+    media_id = ig_publish(ig_user_id, page_token, creation_id)
     print("✅ Published IG media id:", media_id)
 
     fb_post_id = fb_publish_photo(fb_page_id, page_token, image_url, caption)
