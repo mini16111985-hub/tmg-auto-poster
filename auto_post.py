@@ -90,16 +90,16 @@ def upload_to_imgur(image_bytes: bytes) -> str:
 # Meta discovery: user token -> page token -> ig id
 # ----------------------------
 
-def meta_whoami(user_token: str) -> dict:
-    r = SESSION.get(f"{GRAPH}/me", params={"fields": "id,name", "access_token": user_token}, timeout=60)
+def meta_whoami(page_token: str) -> dict:
+    r = SESSION.get(f"{GRAPH}/me", params={"fields": "id,name", "access_token": page_token}, timeout=60)
     raise_for_status_with_body(r, "Meta /me")
     return r.json()
 
-def get_page_token(user_token: str, fb_page_id: str) -> str:
+def get_page_token(page_token: str, fb_page_id: str) -> str:
     def _do():
         r = SESSION.get(
             f"{GRAPH}/me/accounts",
-            params={"fields": "id,name,access_token", "access_token": user_token},
+            params={"fields": "id,name,access_token", "access_token": page_token},
             timeout=60,
         )
         raise_for_status_with_body(r, "Meta /me/accounts")
@@ -129,10 +129,10 @@ def get_ig_user_id_from_page(page_token: str, fb_page_id: str) -> str:
 # IG publish
 # ----------------------------
 
-def ig_create_container(ig_user_id: str, user_token: str, image_url: str, caption: str) -> str:
+def ig_create_container(ig_user_id: str, page_token: str, image_url: str, caption: str) -> str:
     r = SESSION.post(
         f"{GRAPH}/{ig_user_id}/media",
-        data={"image_url": image_url, "caption": caption, "access_token": user_token},
+        data={"image_url": image_url, "caption": caption, "access_token": page_token},
         timeout=60,
     )
     raise_for_status_with_body(r, "IG create container (/media)")
@@ -163,7 +163,7 @@ def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: i
 def ig_publish(ig_user_id: str, page_token: str, creation_id: str) -> str:
     r = SESSION.post(
         f"{GRAPH}/{ig_user_id}/media_publish",
-        data={"creation_id": creation_id, "access_token": user_token},
+        data={"creation_id": creation_id, "access_token": page_token},
         timeout=60,
     )
     raise_for_status_with_body(r, "IG publish (/media_publish)")
@@ -196,13 +196,13 @@ def pick_prompt(items: list[dict]) -> dict:
     return items[pick]
 
 def main():
-    user_token = os.environ["META_USER_ACCESS_TOKEN"].strip()
+    page_token = os.environ["META_USER_ACCESS_TOKEN"].strip()
     fb_page_id = os.environ["FB_PAGE_ID"].strip()
 
-    who = meta_whoami(user_token)
+    who = meta_whoami(page_token)
     print("🔎 TOKEN /me:", who)
 
-    page_token = get_page_token(user_token, fb_page_id)
+    page_token = get_page_token(page_token, fb_page_id)
     print("✅ Got PAGE token (masked):", page_token[:20] + "..." + page_token[-10:])
 
     ig_user_id = get_ig_user_id_from_page(page_token, fb_page_id)
@@ -226,7 +226,7 @@ def main():
     caption = openai_generate_caption(prompt, hashtags)
     print("📝 Caption:", caption)
 
-    creation_id = ig_create_container(ig_user_id, user_token, image_url, caption)
+    creation_id = ig_create_container(ig_user_id, page_token, image_url, caption)
     ig_wait_container_ready(creation_id, page_token)
     media_id = ig_publish(ig_user_id, page_token, creation_id)
     print("✅ Published IG media id:", media_id)
