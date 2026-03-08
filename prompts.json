@@ -1,18 +1,52 @@
-[
-  {
-    "prompt": "classic 1967 Ford Mustang fastback, ultra realistic photo, studio lighting, sharp focus, clean background, no people, no text, no watermark",
-    "hashtags": "#oldtimer #mustang #classiccar #timemachinegarage"
-  },
-  {
-    "prompt": "1963 Chevrolet Corvette Sting Ray, ultra realistic photo, cinematic lighting, sharp focus, clean background, no people, no text, no watermark",
-    "hashtags": "#oldtimer #corvette #classiccar #timemachinegarage"
-  },
-  {
-    "prompt": "1970 Dodge Charger R/T, ultra realistic photo, street at dusk, cinematic lighting, sharp focus, no people, no text, no watermark",
-    "hashtags": "#oldtimer #charger #classiccar #timemachinegarage"
-  },
-  {
-    "prompt": "1969 Porsche 911 classic, ultra realistic photo, studio lighting, sharp focus, clean background, no people, no text, no watermark",
-    "hashtags": "#oldtimer #porsche911 #classiccar #timemachinegarage"
-  }
-]
+{
+  "cars": [
+    "Ferrari 250 GTO",
+    "Lamborghini Miura",
+    "Porsche 911 Carrera RS",
+    "Jaguar E-Type",
+    "Mercedes 300SL Gullwing",
+    "Toyota 2000GT",
+    "Nissan Skyline 2000GT-R",
+    "Mazda RX-3",
+    "Alfa Romeo 33 Stradale",
+    "BMW 3.0 CSL",
+    "Ford Mustang Fastback",
+    "Chevrolet Corvette Sting Ray",
+    "Dodge Charger R/T",
+    "Plymouth Hemi Cuda",
+    "Shelby Cobra 427",
+    "De Tomaso Pantera",
+    "Ferrari Daytona",
+    "Lotus Elan",
+    "Lancia Stratos",
+    "Maserati Bora"
+  ],
+
+  "years": [
+    "1955",
+    "1957",
+    "1959",
+    "1961",
+    "1963",
+    "1965",
+    "1967",
+    "1969",
+    "1970",
+    "1971",
+    "1972",
+    "1973"
+  ],
+
+  "scenes": [
+    "sunset on coastal road",
+    "vintage European street",
+    "classic car show",
+    "empty mountain road",
+    "retro gas station",
+    "studio lighting",
+    "foggy morning road",
+    "desert highway",
+    "autumn forest road",
+    "night city lights"
+  ]
+}
