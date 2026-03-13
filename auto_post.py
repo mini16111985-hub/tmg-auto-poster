@@ -220,15 +220,25 @@ def pick_prompt(data: dict) -> dict:
     seed = "TMG_PROMPT_ENGINE_V1"
     rnd = random.Random(seed)
 
-    combos = []
+combos = []
 
-    for car in cars:
-        for year in years:
-            for scene in scenes:
-                combos.append({
-                    "prompt": f"{year} {car}, ultra realistic photo, {scene}, cinematic lighting, sharp focus, clean background, no people, no text, no watermark",
-                    "hashtags": "#classiccar #vintagecar #timemachinegarage"
-                })
+hashtag_sets = [
+    "#classiccar #vintagecar #timemachinegarage #classiccars #vintagecars",
+    "#classiccar #classiccarsdaily #classicdriver #timemachinegarage #vintagecar",
+    "#classiccar #carsofinstagram #vintagecars #timemachinegarage #carphotography",
+    "#classiccar #automotivehistory #classicdrivers #timemachinegarage #vintageauto"
+]
+
+for car in cars:
+    for year in years:
+        for scene in scenes:
+
+            hashtags = rnd.choice(hashtag_sets)
+
+            combos.append({
+                "prompt": f"{year} {car}, ultra realistic photo, {scene}, cinematic lighting, sharp focus, clean background, no people, no text, no watermark",
+                "hashtags": hashtags
+            })
 
     rnd.shuffle(combos)
 
