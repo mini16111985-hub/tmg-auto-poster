@@ -88,26 +88,43 @@ def openai_generate_caption(prompt: str, hashtags: str = "") -> str:
     return r.json()["choices"][0]["message"]["content"].strip()
 
 
-def upload_to_imgur(image_bytes: bytes) -> str:
-    jpeg_bytes = png_to_jpeg_bytes(image_bytes)
+def upload_to_facebook_hosting(image_bytes: bytes, page_token: str) -> str:
+    files = {
+        "source": ("image.jpg", image_bytes, "image/jpeg")
+    }
 
     r = SESSION.post(
-        "https://api.imgur.com/3/image",
-        headers={"Authorization": "Client-ID 546c25a59c58ad7"},
-        files={"image": ("car.jpg", jpeg_bytes, "image/jpeg")},
+        f"{GRAPH}/me/photos",
+        files=files,
+        data={
+            "published": "false",
+            "access_token": page_token
+        },
         timeout=120,
     )
-    raise_for_status_with_body(r, "Imgur upload")
 
-    link = r.json()["data"]["link"]
+    raise_for_status_with_body(r, "FB upload (hosting)")
 
-    if link.startswith("http://"):
-        link = "https://" + link[len("http://"):]
+    photo_id = r.json()["id"]
 
-    # osiguraj .jpg direct link ako je moguće
-    link = link.replace(".jpeg", ".jpg")
+    # dohvati URL slike
+    r2 = SESSION.get(
+        f"{GRAPH}/{photo_id}",
+        params={
+            "fields": "images",
+            "access_token": page_token
+        },
+        timeout=60,
+    )
 
-    return link
+    raise_for_status_with_body(r2, "FB get image URL")
+
+    images = r2.json().get("images", [])
+
+    if not images:
+        raise RuntimeError("No image URL returned from Facebook")
+
+    return images[0]["source"]
 
 
 def meta_whoami(user_token: str) -> dict:
