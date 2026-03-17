@@ -176,13 +176,17 @@ def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: i
         time.sleep(5)
 
 
-def ig_publish(ig_user_id: str, access_token: str, creation_id: str) -> str:
-    url = f"{GRAPH}/{ig_user_id}/media_publish"
-    r = SESSION.post(
+def ig_publish(ig_user_id, page_token, creation_id):
+    url = f"https://graph.facebook.com/v19.0/{ig_user_id}/media_publish"
+
+    res = requests.post(
         url,
-        data={"creation_id": creation_id, "access_token": access_token},
-        timeout=60,
+        data={
+            "creation_id": creation_id,
+            "access_token": page_token
+        }
     )
+
     raise_for_status_with_body(r, "IG publish (/media_publish)")
     return r.json()["id"]
 
