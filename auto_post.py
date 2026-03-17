@@ -1,10 +1,12 @@
 import os
+import io
 import json
 import time
 import datetime as dt
 import base64
 import requests
 import random
+from PIL import Image
 
 GRAPH = "https://graph.facebook.com/v24.0"
 SESSION = requests.Session()
@@ -55,6 +57,13 @@ def openai_generate_image_base64(prompt: str, size: str = "1024x1024") -> bytes:
     return base64.b64decode(b64)
 
 
+def png_to_jpeg_bytes(image_bytes: bytes, quality: int = 95) -> bytes:
+    img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=quality, optimize=True)
+    return out.getvalue()
+
+
 def openai_generate_caption(prompt: str, hashtags: str = "") -> str:
     url = "https://api.openai.com/v1/chat/completions"
     user_msg = (
@@ -80,14 +89,25 @@ def openai_generate_caption(prompt: str, hashtags: str = "") -> str:
 
 
 def upload_to_imgur(image_bytes: bytes) -> str:
+    jpeg_bytes = png_to_jpeg_bytes(image_bytes)
+
     r = SESSION.post(
         "https://api.imgur.com/3/image",
         headers={"Authorization": "Client-ID 546c25a59c58ad7"},
-        data={"image": base64.b64encode(image_bytes)},
+        files={"image": ("car.jpg", jpeg_bytes, "image/jpeg")},
         timeout=120,
     )
     raise_for_status_with_body(r, "Imgur upload")
-    return r.json()["data"]["link"]
+
+    link = r.json()["data"]["link"]
+
+    if link.startswith("http://"):
+        link = "https://" + link[len("http://"):]
+
+    # osiguraj .jpg direct link ako je moguće
+    link = link.replace(".jpeg", ".jpg")
+
+    return link
 
 
 def meta_whoami(user_token: str) -> dict:
@@ -149,7 +169,9 @@ def ig_create_container(ig_user_id: str, access_token: str, image_url: str, capt
         timeout=60,
     )
     raise_for_status_with_body(r, "IG create container (/media)")
-    return r.json()["id"]
+    data = r.json()
+    print("📦 IG container response:", data)
+    return data["id"]
 
 
 def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: int = 300) -> None:
@@ -176,19 +198,22 @@ def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: i
         time.sleep(5)
 
 
-def ig_publish(ig_user_id, page_token, creation_id):
-    url = f"https://graph.facebook.com/v19.0/{ig_user_id}/media_publish"
+def ig_publish(ig_user_id: str, page_token: str, creation_id: str) -> str:
+    url = f"{GRAPH}/{ig_user_id}/media_publish"
 
-    res = requests.post(
+    r = SESSION.post(
         url,
         data={
             "creation_id": creation_id,
-            "access_token": page_token
-        }
+            "access_token": page_token,
+        },
+        timeout=60,
     )
 
     raise_for_status_with_body(r, "IG publish (/media_publish)")
-    return r.json()["id"]
+    data = r.json()
+    print("📤 IG publish response:", data)
+    return data["id"]
 
 
 def fb_publish_photo(fb_page_id: str, access_token: str, image_url: str, caption: str) -> str:
@@ -230,19 +255,20 @@ def pick_prompt(data: dict) -> dict:
         "#classiccar #vintagecar #timemachinegarage #classiccars #vintagecars",
         "#classiccar #classiccarsdaily #classicdriver #timemachinegarage #vintagecar",
         "#classiccar #carsofinstagram #vintagecars #timemachinegarage #carphotography",
-        "#classiccar #automotivehistory #classicdrivers #timemachinegarage #vintageauto"
+        "#classiccar #automotivehistory #classicdrivers #timemachinegarage #vintageauto",
     ]
 
     for car in cars:
         for year in years:
             for scene in scenes:
-
                 hashtags = rnd.choice(hashtag_sets)
 
-                combos.append({
-                    "prompt": f"{year} {car}, ultra realistic photo, {scene}, cinematic lighting, sharp focus, clean background, no people, no text, no watermark",
-                    "hashtags": hashtags
-                })
+                combos.append(
+                    {
+                        "prompt": f"{year} {car}, ultra realistic photo, {scene}, cinematic lighting, sharp focus, clean background, no people, no text, no watermark",
+                        "hashtags": hashtags,
+                    }
+                )
 
     rnd.shuffle(combos)
 
@@ -256,6 +282,7 @@ def pick_prompt(data: dict) -> dict:
     index = days % len(combos)
 
     return combos[index]
+
 
 def main():
     user_token = os.environ["META_USER_ACCESS_TOKEN"].strip()
