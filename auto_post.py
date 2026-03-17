@@ -323,7 +323,7 @@ def main():
     print("🧠 Prompt:", prompt)
 
     img_bytes = openai_generate_image_base64(prompt)
-    image_url = upload_to_imgur(img_bytes)
+    image_url = upload_to_facebook_hosting(img_bytes, page_token)
     print("🖼️ Image URL:", image_url)
 
     caption = openai_generate_caption(prompt, hashtags)
