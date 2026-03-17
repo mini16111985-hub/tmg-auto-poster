@@ -234,12 +234,16 @@ def ig_publish(ig_user_id: str, page_token: str, creation_id: str) -> str:
 
 
 def fb_publish_photo(fb_page_id: str, access_token: str, image_url: str, caption: str) -> str:
+    # mali boost za engagement
+    caption = caption + "\n\nFollow for daily classic cars 🚗"
+
     r = SESSION.post(
         f"{GRAPH}/{fb_page_id}/photos",
         data={
             "url": image_url,
             "caption": caption,
             "published": "true",
+            "temporary": "false",
             "access_token": access_token,
         },
         timeout=60,
