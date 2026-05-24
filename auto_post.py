@@ -197,11 +197,28 @@ def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: i
     while True:
         r = SESSION.get(
             f"{GRAPH}/{creation_id}",
-            params={"fields": "status_code", "access_token": access_token},
+            params={
+                "fields": "status_code,status",
+                "access_token": access_token,
+            },
             timeout=60,
         )
+
+        data = r.json()
+        print("⏳ IG status response:", data)
+
+        if r.status_code == 400 and data.get("error", {}).get("code") == 100:
+            print("⚠️ Authorization/status check issue — čekam i pokušavam ponovno...")
+            time.sleep(10)
+
+            if time.time() - start > max_wait_sec:
+                raise TimeoutError("IG container status auth timeout")
+
+            continue
+
         raise_for_status_with_body(r, "IG container status")
-        status = r.json().get("status_code")
+
+        status = data.get("status_code") or data.get("status")
 
         if status == "FINISHED":
             return
