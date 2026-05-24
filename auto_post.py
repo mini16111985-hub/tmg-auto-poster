@@ -207,16 +207,22 @@ def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: i
         data = r.json()
         print("⏳ IG status response:", data)
 
-        if r.status_code == 400 and data.get("error", {}).get("code") == 100:
-            print("⚠️ Authorization/status check issue — čekam i pokušavam ponovno...")
-            time.sleep(10)
+        if r.status_code >= 400:
+            err = data.get("error", {})
+            code = err.get("code")
+            sub = err.get("error_subcode")
 
-            if time.time() - start > max_wait_sec:
-                raise TimeoutError("IG container status auth timeout")
+            if code == 100 and sub == 33:
+                print("⚠️ Meta auth bug on status check — assuming processing, waiting...")
+                time.sleep(10)
 
-            continue
+                if time.time() - start > max_wait_sec:
+                    print("⚠️ Status timeout — trying publish anyway")
+                    return
 
-        raise_for_status_with_body(r, "IG container status")
+                continue
+
+            raise_for_status_with_body(r, "IG container status")
 
         status = data.get("status_code") or data.get("status")
 
@@ -227,7 +233,8 @@ def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: i
             raise RuntimeError(f"IG container status: {status}")
 
         if time.time() - start > max_wait_sec:
-            raise TimeoutError("IG container not ready in time")
+            print("⚠️ Timeout — continuing to publish anyway")
+            return
 
         time.sleep(5)
 
