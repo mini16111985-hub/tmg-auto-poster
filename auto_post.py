@@ -242,19 +242,52 @@ def ig_wait_container_ready(creation_id: str, access_token: str, max_wait_sec: i
 def ig_publish(ig_user_id: str, page_token: str, creation_id: str) -> str:
     url = f"{GRAPH}/{ig_user_id}/media_publish"
 
-    r = SESSION.post(
-        url,
-        data={
-            "creation_id": creation_id,
-            "access_token": page_token,
-        },
-        timeout=60,
-    )
+    max_attempts = 6
 
-    raise_for_status_with_body(r, "IG publish (/media_publish)")
-    data = r.json()
-    print("📤 IG publish response:", data)
-    return data["id"]
+    for attempt in range(1, max_attempts + 1):
+        r = SESSION.post(
+            url,
+            data={
+                "creation_id": creation_id,
+                "access_token": page_token,
+            },
+            timeout=60,
+        )
+
+        if r.status_code < 400:
+            data = r.json()
+            print("📤 IG publish response:", data)
+            return data["id"]
+
+        try:
+            body = r.json()
+        except Exception:
+            body = {"raw": r.text}
+
+        error = body.get("error", {})
+        code = error.get("code")
+        subcode = error.get("error_subcode")
+
+        # Meta ponekad kaže FINISHED, ali media_publish još nije spreman.
+        if code == 9007 and subcode == 2207027:
+            if attempt == max_attempts:
+                raise RuntimeError(
+                    f"IG publish (/media_publish) još nije spreman nakon "
+                    f"{max_attempts} pokušaja: {body}"
+                )
+
+            wait_seconds = attempt * 5
+            print(
+                f"⏳ IG media još nije spreman za objavu "
+                f"(pokušaj {attempt}/{max_attempts}). "
+                f"Čekam {wait_seconds}s..."
+            )
+            time.sleep(wait_seconds)
+            continue
+
+        raise_for_status_with_body(r, "IG publish (/media_publish)")
+
+    raise RuntimeError("IG publish failed unexpectedly.")
 
 
 def fb_publish_photo(fb_page_id: str, access_token: str, image_url: str, caption: str) -> str:
